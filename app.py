@@ -98,14 +98,29 @@ def get_secret_value(section, key):
         return None
 
 
+def get_any_secret(*keys):
+    for key in keys:
+        try:
+            value = st.secrets.get(key)
+            if value:
+                return value
+        except Exception:
+            pass
+    return None
+
+
 def get_google_client_config():
     client_id = (
         os.environ.get("GOOGLE_CLIENT_ID")
         or get_secret_value("google", "client_id")
+        or get_secret_value("google", "client-id")
+        or get_any_secret("GOOGLE_CLIENT_ID", "google_client_id")
     )
     client_secret = (
         os.environ.get("GOOGLE_CLIENT_SECRET")
         or get_secret_value("google", "client_secret")
+        or get_secret_value("google", "client-secret")
+        or get_any_secret("GOOGLE_CLIENT_SECRET", "google_client_secret")
     )
 
     if not client_id or not client_secret:
@@ -165,6 +180,16 @@ def get_credentials():
 [google]
 client_id = "your-client-id"
 client_secret = "your-client-secret"
+sheet_id = "your-google-sheet-id"
+            """.strip(),
+            language="toml",
+        )
+        st.write("Alternative top-level secrets are also supported:")
+        st.code(
+            """
+GOOGLE_CLIENT_ID = "your-client-id"
+GOOGLE_CLIENT_SECRET = "your-client-secret"
+GOOGLE_SHEET_ID = "your-google-sheet-id"
             """.strip(),
             language="toml",
         )
@@ -260,6 +285,8 @@ def get_configured_spreadsheet_id():
     return (
         os.environ.get("GOOGLE_SHEET_ID")
         or get_secret_value("google", "sheet_id")
+        or get_secret_value("google", "sheet-id")
+        or get_any_secret("GOOGLE_SHEET_ID", "google_sheet_id")
         or (SHEET_ID_FILE.read_text(encoding="utf-8").strip() if SHEET_ID_FILE.exists() else None)
     )
 
