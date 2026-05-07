@@ -52,8 +52,8 @@ SCOPES = [
 APP_FOLDER_NAME = "DocumentSystem"
 DATA_SPREADSHEET_NAME = "DocumentSystemData"
 
-DEFAULT_ADMIN_EMAIL = "admin@gmail.com"
-DEFAULT_ADMIN_PASSWORD = "Admin@2026"
+DEFAULT_ADMIN_EMAIL = "abubacarrjatta3@gmail.com"
+DEFAULT_ADMIN_PASSWORD = "Abubacarr@2026"
 
 SHEETS = {
     "Users": ["id", "username", "email", "password", "role"],
