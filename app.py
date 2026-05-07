@@ -120,7 +120,10 @@ def get_service_account_info():
         except Exception:
             pass
 
-    raw_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    raw_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or get_any_secret(
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+        "google_service_account_json",
+    )
     if raw_json:
         return json.loads(raw_json)
 

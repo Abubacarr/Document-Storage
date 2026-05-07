@@ -51,7 +51,30 @@ On first run, Google may ask you to authorize access.
 
 For Streamlit Cloud, use a Google service account because desktop OAuth cannot open a local browser on the cloud server.
 
-Create a Google Cloud service account, download its JSON key, and paste the key fields into Streamlit secrets:
+Create a Google Cloud service account, download its JSON key, and paste the full JSON into Streamlit secrets as a multi-line string:
+
+```toml
+GOOGLE_SERVICE_ACCOUNT_JSON = '''
+{
+  "type": "service_account",
+  "project_id": "...",
+  "private_key_id": "...",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+  "client_email": "...",
+  "client_id": "...",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "...",
+  "universe_domain": "googleapis.com"
+}
+'''
+
+[google]
+sheet_id = "your-google-sheet-id"
+```
+
+You can also paste the key fields individually:
 
 ```toml
 [gcp_service_account]
