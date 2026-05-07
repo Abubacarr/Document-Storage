@@ -1,0 +1,11 @@
+.streamlit/secrets.toml
+.idea/
+.venv/
+token.json
+credentials.json
+google_sheet_id.txt
+documents.db
+uploads/
+__pycache__/
+*.pyc
+*.docx
