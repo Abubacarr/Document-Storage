@@ -49,14 +49,29 @@ On first run, Google may ask you to authorize access.
 
 ## Streamlit Cloud Deployment
 
-In Streamlit Cloud, set the app secrets:
+For Streamlit Cloud, use a Google service account because desktop OAuth cannot open a local browser on the cloud server.
+
+Create a Google Cloud service account, download its JSON key, and paste the key fields into Streamlit secrets:
 
 ```toml
+[gcp_service_account]
+type = "service_account"
+project_id = "your-project-id"
+private_key_id = "your-private-key-id"
+private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+client_email = "your-service-account@your-project.iam.gserviceaccount.com"
+client_id = "your-service-account-client-id"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "your-cert-url"
+universe_domain = "googleapis.com"
+
 [google]
-client_id = "your-google-client-id"
-client_secret = "your-google-client-secret"
 sheet_id = "your-google-sheet-id"
 ```
+
+Share your Google Sheet with the service account `client_email` as **Editor**.
 
 Deploy from:
 

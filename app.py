@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import streamlit as st
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.oauth2 import service_account
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -109,6 +111,22 @@ def get_any_secret(*keys):
     return None
 
 
+def get_service_account_info():
+    for key in ("gcp_service_account", "google_service_account", "service_account"):
+        try:
+            value = st.secrets.get(key)
+            if value:
+                return dict(value)
+        except Exception:
+            pass
+
+    raw_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if raw_json:
+        return json.loads(raw_json)
+
+    return None
+
+
 def has_secret_value(section, key):
     return bool(get_secret_value(section, key))
 
@@ -128,6 +146,7 @@ def get_secret_diagnostics():
         "has_top_level_google_client_id": bool(get_any_secret("GOOGLE_CLIENT_ID", "google_client_id")),
         "has_top_level_google_client_secret": bool(get_any_secret("GOOGLE_CLIENT_SECRET", "google_client_secret")),
         "has_top_level_google_sheet_id": bool(get_any_secret("GOOGLE_SHEET_ID", "google_sheet_id")),
+        "has_service_account": bool(get_service_account_info()),
     }
 
 
@@ -168,6 +187,13 @@ def has_required_scopes(creds):
 
 
 def get_credentials():
+    service_account_info = get_service_account_info()
+    if service_account_info:
+        return service_account.Credentials.from_service_account_info(
+            service_account_info,
+            scopes=SCOPES,
+        )
+
     creds = None
     if TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
@@ -215,11 +241,36 @@ GOOGLE_SHEET_ID = "your-google-sheet-id"
             """.strip(),
             language="toml",
         )
+        st.write("For Streamlit Cloud, use a service account secret instead of desktop OAuth:")
+        st.code(
+            """
+[gcp_service_account]
+type = "service_account"
+project_id = "..."
+private_key_id = "..."
+private_key = "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n"
+client_email = "..."
+client_id = "..."
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+client_x509_cert_url = "..."
+universe_domain = "googleapis.com"
+            """.strip(),
+            language="toml",
+        )
         st.write("Secrets diagnostic:")
         st.json(get_secret_diagnostics())
         st.stop()
 
-    creds = flow.run_local_server(port=0)
+    try:
+        creds = flow.run_local_server(port=0)
+    except webbrowser.Error:
+        st.error("Desktop Google OAuth cannot run on Streamlit Cloud.")
+        st.write("Streamlit Cloud has no local browser for `run_local_server()`. Use a Google service account in Streamlit secrets instead.")
+        st.write("After creating the service account, share your Google Sheet with the service account email as Editor.")
+        st.stop()
+
     TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
     return creds
 
