@@ -109,6 +109,28 @@ def get_any_secret(*keys):
     return None
 
 
+def has_secret_value(section, key):
+    return bool(get_secret_value(section, key))
+
+
+def get_secret_diagnostics():
+    try:
+        secret_keys = list(st.secrets.keys())
+    except Exception:
+        secret_keys = []
+
+    return {
+        "top_level_secret_keys": ", ".join(secret_keys) or "(none)",
+        "has_google_section": "google" in secret_keys,
+        "has_google_client_id": has_secret_value("google", "client_id"),
+        "has_google_client_secret": has_secret_value("google", "client_secret"),
+        "has_google_sheet_id": has_secret_value("google", "sheet_id"),
+        "has_top_level_google_client_id": bool(get_any_secret("GOOGLE_CLIENT_ID", "google_client_id")),
+        "has_top_level_google_client_secret": bool(get_any_secret("GOOGLE_CLIENT_SECRET", "google_client_secret")),
+        "has_top_level_google_sheet_id": bool(get_any_secret("GOOGLE_SHEET_ID", "google_sheet_id")),
+    }
+
+
 def get_google_client_config():
     client_id = (
         os.environ.get("GOOGLE_CLIENT_ID")
@@ -193,6 +215,8 @@ GOOGLE_SHEET_ID = "your-google-sheet-id"
             """.strip(),
             language="toml",
         )
+        st.write("Secrets diagnostic:")
+        st.json(get_secret_diagnostics())
         st.stop()
 
     creds = flow.run_local_server(port=0)
