@@ -2,7 +2,7 @@
 
 A Streamlit document management system with user accounts, admin controls, and Supabase file storage. Admins can upload, rename, categorize, and delete documents, while viewers can search, open, and download shared files.
 
-## Features
+## Features 
 
 - User login and self-service account creation
 - Admin and viewer roles
