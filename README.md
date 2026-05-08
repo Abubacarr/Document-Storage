@@ -1,6 +1,6 @@
 # Document Storage
 
-A Streamlit document management system with user accounts, admin controls, and Supabase file storage. Admins can upload, rename, categorize, and delete documents, while viewers can search, open, and download shared files.
+A Streamlit document management system with user accounts, admin controls, and Supabase file storage. Admins can upload, rename, categorize, delete documents, block users, and reset passwords, while viewers can search, open, and download shared files.
 
 ## Features 
 
@@ -13,6 +13,9 @@ A Streamlit document management system with user accounts, admin controls, and S
 - Rename documents (admin only)
 - Viewer download buttons
 - Admin-only document and category deletion
+- Managed Visibility
+- Reset Passwords
+- Storage Stats
 
 ## Requirements
 
