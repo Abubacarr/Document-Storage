@@ -387,7 +387,15 @@ elif menu == "View Documents":
 
     st.title("📁 Documents")
 
-    search = st.text_input("Search")
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        search = st.text_input("Search")
+
+    with col2:
+        cur.execute("SELECT name FROM categories")
+        all_categories = ["All"] + [row[0] for row in cur.fetchall()]
+        selected_category = st.selectbox("Filter by Category", all_categories)
 
     cur.execute("""
     SELECT id, title, category, file_link, storage_path, created_at
@@ -404,7 +412,12 @@ elif menu == "View Documents":
 
         doc_id, title, category, file_link, storage_path, created_at = doc
 
+        # Apply search filter
         if search.lower() not in str(title).lower():
+            continue
+
+        # Apply category filter
+        if selected_category != "All" and category != selected_category:
             continue
 
         with st.container(border=True):
