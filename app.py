@@ -6,7 +6,6 @@
 # =========================================================
 
 import hashlib
-import os
 import sqlite3
 import tempfile
 from datetime import datetime
@@ -48,6 +47,17 @@ st.set_page_config(
 
 
 # =========================================================
+# SESSION STATE — must be before everything else
+# =========================================================
+
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if "role" not in st.session_state:
+    st.session_state.role = None
+
+
+# =========================================================
 # SUPABASE CLIENT
 # =========================================================
 
@@ -85,21 +95,18 @@ def upload_to_supabase(file_path: Path, filename: str, category: str):
 
     bucket = "documents"
 
-    # Unique path: category/timestamp_filename
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     storage_path = f"{category}/{timestamp}_{filename}"
 
     with open(file_path, "rb") as f:
         file_bytes = f.read()
 
-    # Upload file
     supabase.storage.from_(bucket).upload(
         path=storage_path,
         file=file_bytes,
         file_options={"upsert": "true"}
     )
 
-    # Get public URL
     public_url = supabase.storage.from_(bucket).get_public_url(storage_path)
 
     return public_url, storage_path
@@ -112,6 +119,7 @@ def delete_from_supabase(storage_path: str):
         get_supabase().storage.from_("documents").remove([storage_path])
     except Exception:
         pass
+
 
 # =========================================================
 # SQLITE SETUP
@@ -154,12 +162,33 @@ conn.commit()
 # MIGRATE OLD DATABASE
 # =========================================================
 
-# Add storage_path column if it doesn't exist
 try:
     cur.execute("ALTER TABLE documents ADD COLUMN storage_path TEXT")
     conn.commit()
 except Exception:
-    pass  # Column already exists
+    pass
+
+
+# =========================================================
+# SEED DEFAULTS
+# =========================================================
+
+cur.execute("SELECT * FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
+
+if not cur.fetchone():
+    cur.execute(
+        "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
+        ("admin", DEFAULT_ADMIN_EMAIL, hash_password(DEFAULT_ADMIN_PASSWORD), "admin")
+    )
+    conn.commit()
+
+for category in DEFAULT_CATEGORIES:
+    try:
+        cur.execute("INSERT INTO categories(name) VALUES(?)", (category,))
+    except Exception:
+        pass
+
+conn.commit()
 
 
 # =========================================================
