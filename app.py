@@ -56,6 +56,9 @@ if "user" not in st.session_state:
 if "role" not in st.session_state:
     st.session_state.role = None
 
+if "renaming_id" not in st.session_state:
+    st.session_state.renaming_id = None
+
 
 # =========================================================
 # SUPABASE CLIENT
@@ -385,33 +388,88 @@ elif menu == "View Documents":
 
     for doc in documents:
 
-        if search.lower() not in str(doc[1]).lower():
+        doc_id, title, category, file_link, storage_path, created_at = doc
+
+        if search.lower() not in str(title).lower():
             continue
 
         with st.container(border=True):
 
-            st.subheader(doc[1])
-            st.write(f"Category: {doc[2]}")
-            st.caption(doc[5])
+            # ── Rename mode ──────────────────────────────
+            if is_admin() and st.session_state.renaming_id == doc_id:
 
-            col1, col2 = st.columns([1, 1])
+                new_title = st.text_input(
+                    "New name",
+                    value=title,
+                    key=f"rename_input_{doc_id}"
+                )
 
-            with col1:
-                st.markdown(f"[📥 Open File]({doc[3]})")
+                col1, col2 = st.columns(2)
 
-            with col2:
-                st.link_button("Download", doc[3])
+                with col1:
+                    if st.button("✅ Save", key=f"save_{doc_id}", use_container_width=True):
+                        if new_title.strip():
+                            cur.execute(
+                                "UPDATE documents SET title=? WHERE id=?",
+                                (new_title.strip(), doc_id)
+                            )
+                            conn.commit()
+                            st.session_state.renaming_id = None
+                            st.success("Renamed successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Name cannot be empty")
 
-            if is_admin():
-                if st.button("Delete", key=f"delete_{doc[0]}"):
-                    try:
-                        delete_from_supabase(doc[4])
-                        cur.execute("DELETE FROM documents WHERE id=?", (doc[0],))
-                        conn.commit()
-                        st.success("Deleted")
+                with col2:
+                    if st.button("❌ Cancel", key=f"cancel_{doc_id}", use_container_width=True):
+                        st.session_state.renaming_id = None
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
+
+            # ── Normal mode ──────────────────────────────
+            else:
+
+                st.subheader(title)
+                st.write(f"Category: {category}")
+                st.caption(created_at)
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown(f"[📥 Open File]({file_link})")
+
+                with col2:
+                    st.link_button("Download", file_link)
+
+                if is_admin():
+
+                    col3, col4 = st.columns(2)
+
+                    with col3:
+                        if st.button(
+                            "✏️ Rename",
+                            key=f"rename_{doc_id}",
+                            use_container_width=True
+                        ):
+                            st.session_state.renaming_id = doc_id
+                            st.rerun()
+
+                    with col4:
+                        if st.button(
+                            "🗑️ Delete",
+                            key=f"delete_{doc_id}",
+                            use_container_width=True
+                        ):
+                            try:
+                                delete_from_supabase(storage_path)
+                                cur.execute(
+                                    "DELETE FROM documents WHERE id=?",
+                                    (doc_id,)
+                                )
+                                conn.commit()
+                                st.success("Deleted")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Delete failed: {e}")
 
 
 # =========================================================
