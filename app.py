@@ -113,7 +113,6 @@ def delete_from_supabase(storage_path: str):
     except Exception:
         pass
 
-
 # =========================================================
 # SQLITE SETUP
 # =========================================================
@@ -151,36 +150,16 @@ CREATE TABLE IF NOT EXISTS documents(
 
 conn.commit()
 
-
 # =========================================================
-# SEED DEFAULTS
+# MIGRATE OLD DATABASE
 # =========================================================
 
-cur.execute("SELECT * FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
-
-if not cur.fetchone():
-    cur.execute(
-        "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
-        ("admin", DEFAULT_ADMIN_EMAIL, hash_password(DEFAULT_ADMIN_PASSWORD), "admin")
-    )
+# Add storage_path column if it doesn't exist
+try:
+    cur.execute("ALTER TABLE documents ADD COLUMN storage_path TEXT")
     conn.commit()
-
-for category in DEFAULT_CATEGORIES:
-    try:
-        cur.execute("INSERT INTO categories(name) VALUES(?)", (category,))
-    except Exception:
-        pass
-
-conn.commit()
-
-
-# =========================================================
-# SESSION
-# =========================================================
-
-if "user" not in st.session_state:
-    st.session_state.user = None
-    st.session_state.role = None
+except Exception:
+    pass  # Column already exists
 
 
 # =========================================================
