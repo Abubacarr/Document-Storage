@@ -304,11 +304,19 @@ elif menu == "Upload":
 
     st.title("📤 Upload")
 
+    # Initialize form fields in session state
+    if "upload_title" not in st.session_state:
+        st.session_state.upload_title = ""
+    if "upload_category_index" not in st.session_state:
+        st.session_state.upload_category_index = 0
+    if "upload_key" not in st.session_state:
+        st.session_state.upload_key = 0
+
     cur.execute("SELECT name FROM categories")
     categories = [row[0] for row in cur.fetchall()]
 
-    with st.form("upload_form"):
-        title = st.text_input("Title")
+    with st.form(key=f"upload_form_{st.session_state.upload_key}"):
+        title = st.text_input("Title", value="")
         category = st.selectbox("Category", categories)
         uploaded_file = st.file_uploader("Choose File")
         submit = st.form_submit_button("Upload", use_container_width=True)
@@ -356,6 +364,10 @@ elif menu == "Upload":
 
                 st.success("Uploaded successfully!")
                 st.markdown(f"[Open File]({public_url})")
+
+                # Clear form by incrementing key
+                st.session_state.upload_key += 1
+                st.rerun()
 
             except Exception as e:
                 st.error(f"Upload failed: {e}")
