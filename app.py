@@ -28,10 +28,11 @@ DEFAULT_ADMIN_EMAIL = "admin@gmail.com"
 DEFAULT_ADMIN_PASSWORD = "Admin@2026"
 
 DEFAULT_CATEGORIES = (
+    "Guidelines",
     "Policies",
     "Reports",
-    "Letters",
-    "Invoices",
+    "Standard Operating Procedures (SOPs)",
+    "Work Plans",
 )
 
 
@@ -41,8 +42,9 @@ DEFAULT_CATEGORIES = (
 
 st.set_page_config(
     page_title="Document Storage",
-    page_icon="📂",
+    page_icon="logo.png",
     layout="wide",
+)
 )
 
 
