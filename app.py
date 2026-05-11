@@ -14,7 +14,9 @@ from pathlib import Path
 import streamlit as st
 from supabase import create_client, Client
 
-
+import random
+import smtplib
+from email.mime.text import MIMEText
 # =========================================================
 # CONFIG
 # =========================================================
@@ -24,8 +26,11 @@ SQLITE_DB_PATH = BASE_DIR / "documents.db"
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-DEFAULT_ADMIN_EMAIL = "admin@gmail.com"
-DEFAULT_ADMIN_PASSWORD = "Admin@2026"
+DEFAULT_ADMIN_EMAIL = st.secrets["DEFAULT_ADMIN_EMAIL"]
+DEFAULT_ADMIN_PASSWORD = st.secrets["DEFAULT_ADMIN_PASSWORD"]
+
+EMAIL_ADDRESS = st.secrets["abubacarrjatta3@gmail.com"]
+EMAIL_PASSWORD = st.secrets["edzk cebw bawf fkzd"]
 
 DEFAULT_CATEGORIES = (
     "Guidelines",
@@ -91,6 +96,36 @@ def require_admin():
         st.error("Admin only")
         st.stop()
 
+# =========================================================
+# Email Verification
+# =========================================================
+
+def send_verification_email(receiver_email, code):
+
+    subject = "Document Storage Verification Code"
+
+    body = f"""
+Your verification code is:
+
+{code}
+
+Enter this code to complete your account registration.
+"""
+
+    msg = MIMEText(body)
+
+    msg["Subject"] = subject
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = receiver_email
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+
+        smtp.login(
+            EMAIL_ADDRESS,
+            EMAIL_PASSWORD
+        )
+
+        smtp.send_message(msg)
 
 # =========================================================
 # SUPABASE STORAGE
@@ -241,8 +276,38 @@ def login_page():
                 st.success("Logged in")
                 st.rerun()
 
+    def login_page():
+
+    st.title("🔐 Login")
+
+    tab1, tab2 = st.tabs(["Login", "Create Account"])
+
+    with tab1:
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Login", use_container_width=True)
+
+        if submit:
+            cur.execute(
+                "SELECT id, username, role, is_blocked FROM users WHERE email=? AND password=?",
+                (email, hash_password(password))
+            )
+            user = cur.fetchone()
+
+            if not user:
+                st.error("Invalid email or password")
+            elif user[3] == 1:
+                st.error("Your account has been blocked. Contact the admin.")
+            else:
+                st.session_state.user_id = user[0]
+                st.session_state.user = user[1]
+                st.session_state.role = user[2]
+                st.success("Logged in")
+                st.rerun()
+
     with tab2:
-        with st.form("register_form"):
+        with st.form("with st.form("register_form", clear_on_submit=True):"):
             username = st.text_input("Name")
             email = st.text_input("Email")
             password = st.text_input("Password", type="password")
@@ -258,6 +323,34 @@ def login_page():
                 st.success("Account created — you can now log in")
             except sqlite3.IntegrityError:
                 st.error("Email already exists")
+
+
+if not st.session_state.user:
+    login_page()
+    st.stop()
+
+
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+with st.sidebar:
+
+    st.title("📂 Document Storage")
+    st.caption(f"{st.session_state.user} ({st.session_state.role})")
+
+    menu_items = ["Dashboard", "Upload", "View Documents"]
+
+    if is_admin():
+        menu_items += ["Categories", "Users", "Admin Tools"]
+
+    menu = st.selectbox("Menu", menu_items)
+
+    if st.button("Logout", use_container_width=True):
+        st.session_state.user = None
+        st.session_state.role = None
+        st.session_state.user_id = None
+        st.rerun()
 
 
 if not st.session_state.user:
