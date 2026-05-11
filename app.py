@@ -10,7 +10,7 @@ import sqlite3
 import tempfile
 from datetime import datetime
 from pathlib import Path
-
+import time
 import streamlit as st
 from supabase import create_client, Client
 
@@ -327,97 +327,40 @@ def login_page():
     # CREATE ACCOUNT TAB
     # =====================================================
 
-    with tab2:
+   # In the Create Account tab, replace the STEP 2 verification with this:
 
-        # ---------------------------------------------
-        # STEP 1 → REGISTRATION FORM
-        # ---------------------------------------------
+with tab2:
+    with st.form("register_form", clear_on_submit=True):
+        username = st.text_input("Name")
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        confirm_password = st.text_input("Confirm Password", type="password")
+        
+        submit = st.form_submit_button("Create Account", use_container_width=True)
 
-        if "pending_verification" not in st.session_state:
-
-            with st.form(
-                "register_form",
-                clear_on_submit=True
-            ):
-
-                username = st.text_input("Name")
-
-                email = st.text_input("Email")
-
-                password = st.text_input(
-                    "Password",
-                    type="password"
+    if submit:
+        if not username or not email or not password:
+            st.error("All fields are required")
+        elif password != confirm_password:
+            st.error("Passwords do not match")
+        elif len(password) < 6:
+            st.error("Password must be at least 6 characters")
+        else:
+            cur.execute("SELECT id FROM users WHERE email=?", (email,))
+            existing = cur.fetchone()
+            
+            if existing:
+                st.error("Email already exists")
+            else:
+                # Create account directly without verification
+                cur.execute(
+                    "INSERT INTO users(username, email, password, role) VALUES(?,?,?,?)",
+                    (username, email, hash_password(password), "viewer")
                 )
-
-                confirm_password = st.text_input(
-                    "Confirm Password",
-                    type="password"
-                )
-
-                submit = st.form_submit_button(
-                    "Create Account",
-                    use_container_width=True
-                )
-
-            if submit:
-
-                if not username or not email or not password:
-
-                    st.error("All fields are required")
-
-                elif password != confirm_password:
-
-                    st.error("Passwords do not match")
-
-                elif len(password) < 6:
-
-                    st.error("Password must be at least 6 characters")
-
-                else:
-
-                    cur.execute(
-                        "SELECT id FROM users WHERE email=?",
-                        (email,)
-                    )
-
-                    existing = cur.fetchone()
-
-                    if existing:
-
-                        st.error("Email already exists")
-
-                    else:
-
-                        verification_code = str(
-                            random.randint(100000, 999999)
-                        )
-
-                        try:
-
-                            send_verification_email(
-                                email,
-                                verification_code
-                            )
-
-                            st.session_state.pending_verification = {
-                                "username": username,
-                                "email": email,
-                                "password": hash_password(password),
-                                "code": verification_code
-                            }
-
-                            st.success(
-                                "Verification code sent to your email"
-                            )
-
-                            st.rerun()
-
-                        except Exception as e:
-
-                            st.error(
-                                f"Failed to send email: {e}"
-                            )
-
+                conn.commit()
+                st.success("Account created successfully! You can now login.")
+                time.sleep(1)
+                st.rerun()
         # ---------------------------------------------
         # STEP 2 → VERIFY EMAIL
         # ---------------------------------------------
