@@ -14,9 +14,6 @@ import time
 import streamlit as st
 from supabase import create_client, Client
 
-import random
-import smtplib
-from email.mime.text import MIMEText
 # =========================================================
 # CONFIG
 # =========================================================
@@ -28,10 +25,6 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 DEFAULT_ADMIN_EMAIL = st.secrets.get("EMAIL_ADDRESS", "")
 DEFAULT_ADMIN_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "")
-
-EMAIL_ADDRESS = st.secrets.get("EMAIL_ADDRESS", "")
-EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "")
-
 
 DEFAULT_CATEGORIES = (
     "Guidelines",
@@ -97,41 +90,6 @@ def require_admin():
         st.error("Admin only")
         st.stop()
 
-# =========================================================
-# Email Verification
-# =========================================================
-
-def send_verification_email(receiver_email, code):
-    subject = "Document Storage Verification Code"
-    body = f"""
-Your verification code is:
-
-{code}
-
-Enter this code to complete your account registration.
-"""
-    
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = receiver_email
-    
-    try:
-        # Try with STARTTLS instead of SSL
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            smtp.set_debuglevel(1)
-            smtp.ehlo()
-            smtp.starttls()  # Enable encryption
-            smtp.ehlo()
-            
-            app_password = EMAIL_PASSWORD.replace(" ", "")
-            smtp.login(EMAIL_ADDRESS, app_password)
-            smtp.send_message(msg)
-            
-        return True
-    except Exception as e:
-        st.error(f"Failed to send email: {e}")
-        return False
 # =========================================================
 # SUPABASE STORAGE
 # =========================================================
@@ -231,6 +189,15 @@ for column, table, definition in [
 # SEED DEFAULTS
 # =========================================================
 
+# Seed default categories
+for cat in DEFAULT_CATEGORIES:
+    try:
+        cur.execute("INSERT INTO categories(name) VALUES(?)", (cat,))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass
+
+# Seed admin user
 cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
 existing = cur.fetchone()
 
@@ -245,22 +212,6 @@ if not existing:
         )
     )
     conn.commit()
-# additional help
-cur.execute("DELETE FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
-conn.commit()
-
-cur.execute(
-    "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
-    (
-        "admin",
-        DEFAULT_ADMIN_EMAIL,
-        hash_password(DEFAULT_ADMIN_PASSWORD),
-        "admin"
-    )
-)
-conn.commit()
-
-
 
 
 # =========================================================
@@ -327,99 +278,39 @@ def login_page():
     # CREATE ACCOUNT TAB
     # =====================================================
 
-   # In the Create Account tab, replace the STEP 2 verification with this:
-
-with tab2:
-    with st.form("register_form", clear_on_submit=True):
-        username = st.text_input("Name")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        confirm_password = st.text_input("Confirm Password", type="password")
-        
-        submit = st.form_submit_button("Create Account", use_container_width=True)
-
-    if submit:
-        if not username or not email or not password:
-            st.error("All fields are required")
-        elif password != confirm_password:
-            st.error("Passwords do not match")
-        elif len(password) < 6:
-            st.error("Password must be at least 6 characters")
-        else:
-            cur.execute("SELECT id FROM users WHERE email=?", (email,))
-            existing = cur.fetchone()
+    with tab2:
+        with st.form("register_form", clear_on_submit=True):
+            username = st.text_input("Name")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            confirm_password = st.text_input("Confirm Password", type="password")
             
-            if existing:
-                st.error("Email already exists")
+            submit = st.form_submit_button("Create Account", use_container_width=True)
+
+        if submit:
+            if not username or not email or not password:
+                st.error("All fields are required")
+            elif password != confirm_password:
+                st.error("Passwords do not match")
+            elif len(password) < 6:
+                st.error("Password must be at least 6 characters")
             else:
-                # Create account directly without verification
-                cur.execute(
-                    "INSERT INTO users(username, email, password, role) VALUES(?,?,?,?)",
-                    (username, email, hash_password(password), "viewer")
-                )
-                conn.commit()
-                st.success("Account created successfully! You can now login.")
-                time.sleep(1)
-                st.rerun()
-        # ---------------------------------------------
-        # STEP 2 → VERIFY EMAIL
-        # ---------------------------------------------
-
-        else:
-
-            st.info(
-                f"Verification code sent to "
-                f"{st.session_state.pending_verification['email']}"
-            )
-
-            with st.form("verify_form"):
-
-                entered_code = st.text_input(
-                    "Enter Verification Code"
-                )
-
-                verify_submit = st.form_submit_button(
-                    "Verify Account",
-                    use_container_width=True
-                )
-
-            if verify_submit:
-
-                saved = st.session_state.pending_verification
-
-                if entered_code == saved["code"]:
-
-                    cur.execute(
-                        """
-                        INSERT INTO users(
-                            username,
-                            email,
-                            password,
-                            role
-                        )
-                        VALUES(?,?,?,?)
-                        """,
-                        (
-                            saved["username"],
-                            saved["email"],
-                            saved["password"],
-                            "viewer"
-                        )
-                    )
-
-                    conn.commit()
-
-                    del st.session_state.pending_verification
-
-                    st.success(
-                        "Account created successfully"
-                    )
-
-                    st.rerun()
-
+                cur.execute("SELECT id FROM users WHERE email=?", (email,))
+                existing = cur.fetchone()
+                
+                if existing:
+                    st.error("Email already exists")
                 else:
-
-                    st.error("Invalid verification code")
+                    # Create account directly without verification
+                    cur.execute(
+                        "INSERT INTO users(username, email, password, role) VALUES(?,?,?,?)",
+                        (username, email, hash_password(password), "viewer")
+                    )
+                    conn.commit()
+                    st.success("✅ Account created successfully! You can now login.")
+                    st.info("Go to the Login tab to sign in.")
+                    time.sleep(2)
+                    st.rerun()
 
 
 # =========================================================
@@ -445,7 +336,7 @@ with st.sidebar:
     menu = st.selectbox(
         "Menu",
         menu_items,
-        key="main_menu"   # 👈 IMPORTANT FIX (extra safety)
+        key="main_menu"
     )
 
     if st.button("Logout", use_container_width=True):
@@ -714,9 +605,10 @@ elif menu == "Categories":
         except sqlite3.IntegrityError:
             st.error("Category already exists")
 
+    st.subheader("Existing Categories")
     cur.execute("SELECT id, name FROM categories")
     for cat in cur.fetchall():
-        st.write(cat[1])
+        st.write(f"📁 {cat[1]}")
 
 
 # =========================================================
@@ -942,3 +834,11 @@ elif menu == "Admin Tools":
                         st.rerun()
                 else:
                     st.info("No restrictions to remove")
+
+
+# =========================================================
+# CLOSE DATABASE CONNECTION
+# =========================================================
+
+# Note: SQLite connection will be closed when the script ends
+# For a production app, consider using context managers
