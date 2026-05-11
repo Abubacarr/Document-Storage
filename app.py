@@ -60,8 +60,6 @@ if "renaming_id" not in st.session_state:
     st.session_state.renaming_id = None
 if "upload_key" not in st.session_state:
     st.session_state.upload_key = 0
-if "db_initialized" not in st.session_state:
-    st.session_state.db_initialized = False
 
 
 # =========================================================
@@ -76,27 +74,19 @@ def get_supabase() -> Client:
 
 
 # =========================================================
-# HELPER FUNCTIONS
+# DATABASE CONNECTION (Thread-safe)
 # =========================================================
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+def get_db_connection():
+    """Create a new database connection for the current thread"""
+    conn = sqlite3.connect(SQLITE_DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-def is_admin():
-    return st.session_state.get("role") == "admin"
-
-
-def require_admin():
-    if not is_admin():
-        st.error("Admin only")
-        st.stop()
-
-
-@st.cache_resource
 def init_database():
-    """Initialize database and return connection"""
-    conn = sqlite3.connect(SQLITE_DB_PATH)
+    """Initialize database tables and seed data"""
+    conn = get_db_connection()
     cur = conn.cursor()
     
     # Create tables
@@ -161,27 +151,47 @@ def init_database():
     conn.commit()
     
     # Seed admin user if not exists
-    cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
-    existing = cur.fetchone()
-    
-    if not existing:
-        cur.execute(
-            "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
-            (
-                "admin",
-                DEFAULT_ADMIN_EMAIL,
-                hash_password(DEFAULT_ADMIN_PASSWORD),
-                "admin"
+    if DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD:
+        cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
+        existing = cur.fetchone()
+        
+        if not existing:
+            cur.execute(
+                "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
+                (
+                    "admin",
+                    DEFAULT_ADMIN_EMAIL,
+                    hash_password(DEFAULT_ADMIN_PASSWORD),
+                    "admin"
+                )
             )
-        )
-        conn.commit()
+            conn.commit()
     
-    return conn
+    conn.close()
 
 
-# Initialize database
-conn = init_database()
-cur = conn.cursor()
+# Initialize database on first run
+if "db_initialized" not in st.session_state:
+    init_database()
+    st.session_state.db_initialized = True
+
+
+# =========================================================
+# HELPER FUNCTIONS
+# =========================================================
+
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def is_admin():
+    return st.session_state.get("role") == "admin"
+
+
+def require_admin():
+    if not is_admin():
+        st.error("Admin only")
+        st.stop()
 
 
 # =========================================================
@@ -221,6 +231,8 @@ def delete_from_supabase(storage_path: str):
 # =========================================================
 
 def login_page():
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     st.title("🔐 Login")
 
@@ -274,6 +286,7 @@ def login_page():
                 st.session_state.role = user[2]
 
                 st.success("Logged in successfully")
+                conn.close()
                 st.rerun()
 
     # =====================================================
@@ -312,7 +325,10 @@ def login_page():
                     st.success("✅ Account created successfully! You can now login.")
                     st.info("Go to the Login tab to sign in.")
                     time.sleep(2)
+                    conn.close()
                     st.rerun()
+    
+    conn.close()
 
 
 # =========================================================
@@ -356,6 +372,8 @@ with st.sidebar:
 # =========================================================
 
 if menu == "Dashboard":
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     st.title("📊 Dashboard")
 
@@ -376,6 +394,8 @@ if menu == "Dashboard":
     col2.metric("Users", total_users)
     col3.metric("Categories", total_categories)
     col4.metric("Blocked Users", blocked_users)
+    
+    conn.close()
 
 
 # =========================================================
@@ -383,6 +403,8 @@ if menu == "Dashboard":
 # =========================================================
 
 elif menu == "Upload":
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     require_admin()
 
@@ -442,6 +464,7 @@ elif menu == "Upload":
                 st.markdown(f"[Open File]({public_url})")
 
                 st.session_state.upload_key += 1
+                conn.close()
                 st.rerun()
 
             except Exception as e:
@@ -450,6 +473,8 @@ elif menu == "Upload":
             finally:
                 if temp_path and temp_path.exists():
                     temp_path.unlink(missing_ok=True)
+    
+    conn.close()
 
 
 # =========================================================
@@ -457,6 +482,8 @@ elif menu == "Upload":
 # =========================================================
 
 elif menu == "View Documents":
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     st.title("📁 Documents")
 
@@ -469,7 +496,7 @@ elif menu == "View Documents":
         selected_category = st.selectbox("Filter by Category", all_categories)
 
     # Admins see all docs including hidden
-    # Viewers only see non-hidden docs not restricted to them
+    # Viewers only see non-hidden docs
     if is_admin():
         cur.execute("""
             SELECT id, title, category, file_link, storage_path, created_at, is_hidden
@@ -478,18 +505,16 @@ elif menu == "View Documents":
         """)
     else:
         cur.execute("""
-            SELECT id, title, category, file_link, storage_path, created_at, is_hidden
-            FROM documents
-            WHERE is_hidden = 0
-            AND id NOT IN (
-                SELECT document_id FROM document_visibility
-                WHERE user_id != ?
-                UNION
-                SELECT document_id FROM document_visibility
-                WHERE user_id = ?
+            SELECT DISTINCT d.id, d.title, d.category, d.file_link, d.storage_path, d.created_at, d.is_hidden
+            FROM documents d
+            WHERE d.is_hidden = 0
+            AND d.id NOT IN (
+                SELECT dv.document_id 
+                FROM document_visibility dv 
+                WHERE dv.user_id = ?
             )
-            ORDER BY id DESC
-        """, (st.session_state.user_id, st.session_state.user_id))
+            ORDER BY d.id DESC
+        """, (st.session_state.user_id,))
 
     documents = cur.fetchall()
 
@@ -528,6 +553,7 @@ elif menu == "View Documents":
                             conn.commit()
                             st.session_state.renaming_id = None
                             st.success("Renamed!")
+                            conn.close()
                             st.rerun()
                         else:
                             st.error("Name cannot be empty")
@@ -585,6 +611,8 @@ elif menu == "View Documents":
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Delete failed: {e}")
+    
+    conn.close()
 
 
 # =========================================================
@@ -592,6 +620,8 @@ elif menu == "View Documents":
 # =========================================================
 
 elif menu == "Categories":
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     require_admin()
 
@@ -607,6 +637,7 @@ elif menu == "Categories":
                 cur.execute("INSERT INTO categories(name) VALUES(?)", (new_category.strip(),))
                 conn.commit()
                 st.success("Added")
+                conn.close()
                 st.rerun()
             except sqlite3.IntegrityError:
                 st.error("Category already exists")
@@ -627,11 +658,14 @@ elif menu == "Categories":
                     try:
                         cur.execute("DELETE FROM categories WHERE id=?", (cat[0],))
                         conn.commit()
+                        conn.close()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Cannot delete: {e}")
     else:
         st.info("No categories found")
+    
+    conn.close()
 
 
 # =========================================================
@@ -639,6 +673,8 @@ elif menu == "Categories":
 # =========================================================
 
 elif menu == "Users":
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     require_admin()
 
@@ -669,6 +705,7 @@ elif menu == "Users":
                         )
                         conn.commit()
                         st.success(f"Role changed to {new_role}")
+                        conn.close()
                         st.rerun()
                     else:
                         st.error("Cannot change default admin role")
@@ -682,9 +719,12 @@ elif menu == "Users":
                             (0 if ublocked else 1, uid)
                         )
                         conn.commit()
+                        conn.close()
                         st.rerun()
                     else:
                         st.error("Cannot block default admin")
+    
+    conn.close()
 
 
 # =========================================================
@@ -692,6 +732,8 @@ elif menu == "Users":
 # =========================================================
 
 elif menu == "Admin Tools":
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     require_admin()
 
@@ -783,7 +825,7 @@ elif menu == "Admin Tools":
     with tab3:
 
         st.subheader("Manage Document Visibility")
-        st.caption("Restrict specific documents to specific users")
+        st.caption("Restrict specific documents from specific users")
 
         cur.execute("""
             SELECT id, title, category, is_hidden
@@ -839,6 +881,7 @@ elif menu == "Admin Tools":
                         )
                         conn.commit()
                         st.success("Document hidden from this user!")
+                        conn.close()
                         st.rerun()
                     except Exception:
                         st.error("Already hidden from this user")
@@ -857,6 +900,9 @@ elif menu == "Admin Tools":
                         """, (doc_id, selected_remove))
                         conn.commit()
                         st.success("Restriction removed!")
+                        conn.close()
                         st.rerun()
                 else:
                     st.info("No restrictions to remove")
+    
+    conn.close()
