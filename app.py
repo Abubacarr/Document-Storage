@@ -29,8 +29,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 DEFAULT_ADMIN_EMAIL = st.secrets["DEFAULT_ADMIN_EMAIL"]
 DEFAULT_ADMIN_PASSWORD = st.secrets["DEFAULT_ADMIN_PASSWORD"]
 
-EMAIL_ADDRESS = st.secrets["abubacarrjatta3@gmail.com"]
-EMAIL_PASSWORD = st.secrets["edzk cebw bawf fkzd"]
+EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]
+EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]  
+
 
 DEFAULT_CATEGORIES = (
     "Guidelines",
@@ -252,80 +253,218 @@ def login_page():
 
     tab1, tab2 = st.tabs(["Login", "Create Account"])
 
+    # =====================================================
+    # LOGIN TAB
+    # =====================================================
+
     with tab1:
+
         with st.form("login_form"):
+
             email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login", use_container_width=True)
+
+            password = st.text_input(
+                "Password",
+                type="password"
+            )
+
+            submit = st.form_submit_button(
+                "Login",
+                use_container_width=True
+            )
 
         if submit:
+
             cur.execute(
-                "SELECT id, username, role, is_blocked FROM users WHERE email=? AND password=?",
+                """
+                SELECT id, username, role, is_blocked
+                FROM users
+                WHERE email=? AND password=?
+                """,
                 (email, hash_password(password))
             )
+
             user = cur.fetchone()
 
             if not user:
+
                 st.error("Invalid email or password")
+
             elif user[3] == 1:
-                st.error("Your account has been blocked. Contact the admin.")
+
+                st.error("Your account has been blocked. Contact admin.")
+
             else:
+
                 st.session_state.user_id = user[0]
                 st.session_state.user = user[1]
                 st.session_state.role = user[2]
-                st.success("Logged in")
+
+                st.success("Logged in successfully")
                 st.rerun()
 
-    def login_page():
-
-    st.title("🔐 Login")
-
-    tab1, tab2 = st.tabs(["Login", "Create Account"])
-
-    with tab1:
-        with st.form("login_form"):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login", use_container_width=True)
-
-        if submit:
-            cur.execute(
-                "SELECT id, username, role, is_blocked FROM users WHERE email=? AND password=?",
-                (email, hash_password(password))
-            )
-            user = cur.fetchone()
-
-            if not user:
-                st.error("Invalid email or password")
-            elif user[3] == 1:
-                st.error("Your account has been blocked. Contact the admin.")
-            else:
-                st.session_state.user_id = user[0]
-                st.session_state.user = user[1]
-                st.session_state.role = user[2]
-                st.success("Logged in")
-                st.rerun()
+    # =====================================================
+    # CREATE ACCOUNT TAB
+    # =====================================================
 
     with tab2:
-        with st.form("with st.form("register_form", clear_on_submit=True):"):
-            username = st.text_input("Name")
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Create Account", use_container_width=True)
 
-        if submit:
-            try:
-                cur.execute(
-                    "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
-                    (username, email, hash_password(password), "viewer")
+        # ---------------------------------------------
+        # STEP 1 → REGISTRATION FORM
+        # ---------------------------------------------
+
+        if "pending_verification" not in st.session_state:
+
+            with st.form(
+                "register_form",
+                clear_on_submit=True
+            ):
+
+                username = st.text_input("Name")
+
+                email = st.text_input("Email")
+
+                password = st.text_input(
+                    "Password",
+                    type="password"
                 )
-                conn.commit()
-                st.success("Account created — you can now log in")
-            except sqlite3.IntegrityError:
-                st.error("Email already exists")
 
+                confirm_password = st.text_input(
+                    "Confirm Password",
+                    type="password"
+                )
+
+                submit = st.form_submit_button(
+                    "Create Account",
+                    use_container_width=True
+                )
+
+            if submit:
+
+                if not username or not email or not password:
+
+                    st.error("All fields are required")
+
+                elif password != confirm_password:
+
+                    st.error("Passwords do not match")
+
+                elif len(password) < 6:
+
+                    st.error("Password must be at least 6 characters")
+
+                else:
+
+                    cur.execute(
+                        "SELECT id FROM users WHERE email=?",
+                        (email,)
+                    )
+
+                    existing = cur.fetchone()
+
+                    if existing:
+
+                        st.error("Email already exists")
+
+                    else:
+
+                        verification_code = str(
+                            random.randint(100000, 999999)
+                        )
+
+                        try:
+
+                            send_verification_email(
+                                email,
+                                verification_code
+                            )
+
+                            st.session_state.pending_verification = {
+                                "username": username,
+                                "email": email,
+                                "password": hash_password(password),
+                                "code": verification_code
+                            }
+
+                            st.success(
+                                "Verification code sent to your email"
+                            )
+
+                            st.rerun()
+
+                        except Exception as e:
+
+                            st.error(
+                                f"Failed to send email: {e}"
+                            )
+
+        # ---------------------------------------------
+        # STEP 2 → VERIFY EMAIL
+        # ---------------------------------------------
+
+        else:
+
+            st.info(
+                f"Verification code sent to "
+                f"{st.session_state.pending_verification['email']}"
+            )
+
+            with st.form("verify_form"):
+
+                entered_code = st.text_input(
+                    "Enter Verification Code"
+                )
+
+                verify_submit = st.form_submit_button(
+                    "Verify Account",
+                    use_container_width=True
+                )
+
+            if verify_submit:
+
+                saved = st.session_state.pending_verification
+
+                if entered_code == saved["code"]:
+
+                    cur.execute(
+                        """
+                        INSERT INTO users(
+                            username,
+                            email,
+                            password,
+                            role
+                        )
+                        VALUES(?,?,?,?)
+                        """,
+                        (
+                            saved["username"],
+                            saved["email"],
+                            saved["password"],
+                            "viewer"
+                        )
+                    )
+
+                    conn.commit()
+
+                    del st.session_state.pending_verification
+
+                    st.success(
+                        "Account created successfully"
+                    )
+
+                    st.rerun()
+
+                else:
+
+                    st.error("Invalid verification code")
+
+
+# =========================================================
+# SHOW LOGIN PAGE
+# =========================================================
 
 if not st.session_state.user:
+
     login_page()
     st.stop()
 
@@ -337,25 +476,41 @@ if not st.session_state.user:
 with st.sidebar:
 
     st.title("📂 Document Storage")
-    st.caption(f"{st.session_state.user} ({st.session_state.role})")
 
-    menu_items = ["Dashboard", "Upload", "View Documents"]
+    st.caption(
+        f"{st.session_state.user} "
+        f"({st.session_state.role})"
+    )
+
+    menu_items = [
+        "Dashboard",
+        "Upload",
+        "View Documents"
+    ]
 
     if is_admin():
-        menu_items += ["Categories", "Users", "Admin Tools"]
 
-    menu = st.selectbox("Menu", menu_items)
+        menu_items += [
+            "Categories",
+            "Users",
+            "Admin Tools"
+        ]
 
-    if st.button("Logout", use_container_width=True):
+    menu = st.selectbox(
+        "Menu",
+        menu_items
+    )
+
+    if st.button(
+        "Logout",
+        use_container_width=True
+    ):
+
         st.session_state.user = None
         st.session_state.role = None
         st.session_state.user_id = None
+
         st.rerun()
-
-
-if not st.session_state.user:
-    login_page()
-    st.stop()
 
 
 # =========================================================
