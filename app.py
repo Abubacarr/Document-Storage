@@ -215,7 +215,7 @@ for column, table, definition in [
     ("is_hidden", "documents", "INTEGER DEFAULT 0"),
     ("is_blocked", "users", "INTEGER DEFAULT 0"),
 ]:
-    try:
+try:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
         conn.commit()
     except Exception:
