@@ -227,20 +227,20 @@ for column, table, definition in [
 # SEED DEFAULTS
 # =========================================================
 
-cur.execute("SELECT * FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
-if not cur.fetchone():
+cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
+existing = cur.fetchone()
+
+if not existing:
     cur.execute(
         "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
-        ("admin", DEFAULT_ADMIN_EMAIL, hash_password(DEFAULT_ADMIN_PASSWORD), "admin")
+        (
+            "admin",
+            DEFAULT_ADMIN_EMAIL,
+            hash_password(DEFAULT_ADMIN_PASSWORD),
+            "admin"
+        )
     )
     conn.commit()
-
-for category in DEFAULT_CATEGORIES:
-    try:
-        cur.execute("INSERT INTO categories(name) VALUES(?)", (category,))
-    except Exception:
-        pass
-conn.commit()
 # additional help
 cur.execute("DELETE FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
 conn.commit()
