@@ -117,27 +117,21 @@ Enter this code to complete your account registration.
     msg["To"] = receiver_email
     
     try:
-        # For Gmail with App Password
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as smtp:
-            smtp.set_debuglevel(1)  # Enable debugging
-            smtp.ehlo()  # Identify ourselves to the server
+        # Try with STARTTLS instead of SSL
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
+            smtp.set_debuglevel(1)
+            smtp.ehlo()
+            smtp.starttls()  # Enable encryption
+            smtp.ehlo()
             
-            # Login with app password (remove any spaces)
             app_password = EMAIL_PASSWORD.replace(" ", "")
             smtp.login(EMAIL_ADDRESS, app_password)
-            
-            # Send the email
             smtp.send_message(msg)
             
         return True
-    except smtplib.SMTPAuthenticationError as e:
-        st.error(f"Authentication failed. Make sure you're using an App Password, not your regular password. Error: {e}")
-    except smtplib.SMTPException as e:
-        st.error(f"SMTP error occurred: {e}")
     except Exception as e:
         st.error(f"Failed to send email: {e}")
-    
-    return False
+        return False
 # =========================================================
 # SUPABASE STORAGE
 # =========================================================
