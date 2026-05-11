@@ -241,6 +241,22 @@ for category in DEFAULT_CATEGORIES:
     except Exception:
         pass
 conn.commit()
+# additional help
+cur.execute("DELETE FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
+conn.commit()
+
+cur.execute(
+    "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
+    (
+        "admin",
+        DEFAULT_ADMIN_EMAIL,
+        hash_password(DEFAULT_ADMIN_PASSWORD),
+        "admin"
+    )
+)
+conn.commit()
+
+
 
 
 # =========================================================
