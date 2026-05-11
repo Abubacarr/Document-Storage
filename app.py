@@ -485,54 +485,6 @@ if not st.session_state.user:
     st.stop()
 
 
-# =========================================================
-# SIDEBAR
-# =========================================================
-
-with st.sidebar:
-
-    st.title("📂 Document Storage")
-
-    st.caption(
-        f"{st.session_state.user} "
-        f"({st.session_state.role})"
-    )
-
-    menu_items = [
-        "Dashboard",
-        "Upload",
-        "View Documents"
-    ]
-
-    if is_admin():
-
-        menu_items += [
-            "Categories",
-            "Users",
-            "Admin Tools"
-        ]
-
-    menu = st.selectbox(
-        "Menu",
-        menu_items
-    )
-
-    if st.button(
-        "Logout",
-        use_container_width=True
-    ):
-
-        st.session_state.user = None
-        st.session_state.role = None
-        st.session_state.user_id = None
-
-        st.rerun()
-
-
-# =========================================================
-# SIDEBAR
-# =========================================================
-
 with st.sidebar:
 
     st.title("📂 Document Storage")
@@ -543,7 +495,11 @@ with st.sidebar:
     if is_admin():
         menu_items += ["Categories", "Users", "Admin Tools"]
 
-    menu = st.selectbox("Menu", menu_items)
+    menu = st.selectbox(
+        "Menu",
+        menu_items,
+        key="main_menu"   # 👈 IMPORTANT FIX (extra safety)
+    )
 
     if st.button("Logout", use_container_width=True):
         st.session_state.user = None
