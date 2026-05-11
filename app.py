@@ -102,9 +102,7 @@ def require_admin():
 # =========================================================
 
 def send_verification_email(receiver_email, code):
-
     subject = "Document Storage Verification Code"
-
     body = f"""
 Your verification code is:
 
@@ -112,22 +110,19 @@ Your verification code is:
 
 Enter this code to complete your account registration.
 """
-
+    
     msg = MIMEText(body)
-
     msg["Subject"] = subject
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = receiver_email
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-
-        smtp.login(
-            EMAIL_ADDRESS,
-            EMAIL_PASSWORD
-        )
-
-        smtp.send_message(msg)
-
+    
+    try:
+        # For Gmail with App Password
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD.replace(" ", ""))  # Remove spaces from app password
+            smtp.send_message(msg)
+    except Exception as e:
+        st.error(f"Failed to send email: {e}")
 # =========================================================
 # SUPABASE STORAGE
 # =========================================================
