@@ -26,13 +26,13 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 DEFAULT_ADMIN_EMAIL = st.secrets.get("EMAIL_ADDRESS", "")
 DEFAULT_ADMIN_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "")
 
-DEFAULT_CATEGORIES = (
+DEFAULT_CATEGORIES = [
     "Guidelines",
     "Policies",
     "Reports",
     "Standard Operating Procedures (SOPs)",
     "Work Plans",
-)
+]
 
 
 # =========================================================
@@ -60,6 +60,8 @@ if "renaming_id" not in st.session_state:
     st.session_state.renaming_id = None
 if "upload_key" not in st.session_state:
     st.session_state.upload_key = 0
+if "db_initialized" not in st.session_state:
+    st.session_state.db_initialized = False
 
 
 # =========================================================
@@ -74,7 +76,7 @@ def get_supabase() -> Client:
 
 
 # =========================================================
-# HELPERS
+# HELPER FUNCTIONS
 # =========================================================
 
 def hash_password(password):
@@ -90,8 +92,100 @@ def require_admin():
         st.error("Admin only")
         st.stop()
 
+
+@st.cache_resource
+def init_database():
+    """Initialize database and return connection"""
+    conn = sqlite3.connect(SQLITE_DB_PATH)
+    cur = conn.cursor()
+    
+    # Create tables
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        email TEXT UNIQUE,
+        password TEXT,
+        role TEXT,
+        is_blocked INTEGER DEFAULT 0
+    )
+    """)
+    
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS categories(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE
+    )
+    """)
+    
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS documents(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        category TEXT,
+        file_link TEXT,
+        storage_path TEXT,
+        created_at TEXT,
+        is_hidden INTEGER DEFAULT 0
+    )
+    """)
+    
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS document_visibility(
+        document_id INTEGER,
+        user_id INTEGER,
+        PRIMARY KEY (document_id, user_id)
+    )
+    """)
+    
+    # Run migrations
+    for column, table, definition in [
+        ("storage_path", "documents", "TEXT"),
+        ("is_hidden", "documents", "INTEGER DEFAULT 0"),
+        ("is_blocked", "users", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        except Exception:
+            pass
+    
+    conn.commit()
+    
+    # Seed default categories
+    for cat in DEFAULT_CATEGORIES:
+        try:
+            cur.execute("INSERT INTO categories(name) VALUES(?)", (cat,))
+        except sqlite3.IntegrityError:
+            pass
+    
+    conn.commit()
+    
+    # Seed admin user if not exists
+    cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
+    existing = cur.fetchone()
+    
+    if not existing:
+        cur.execute(
+            "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
+            (
+                "admin",
+                DEFAULT_ADMIN_EMAIL,
+                hash_password(DEFAULT_ADMIN_PASSWORD),
+                "admin"
+            )
+        )
+        conn.commit()
+    
+    return conn
+
+
+# Initialize database
+conn = init_database()
+cur = conn.cursor()
+
+
 # =========================================================
-# SUPABASE STORAGE
+# SUPABASE STORAGE FUNCTIONS
 # =========================================================
 
 def upload_to_supabase(file_path: Path, filename: str, category: str):
@@ -123,99 +217,7 @@ def delete_from_supabase(storage_path: str):
 
 
 # =========================================================
-# SQLITE SETUP
-# =========================================================
-
-conn = sqlite3.connect(SQLITE_DB_PATH)
-cur = conn.cursor()
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS users(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT,
-    email TEXT UNIQUE,
-    password TEXT,
-    role TEXT,
-    is_blocked INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS categories(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS documents(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    category TEXT,
-    file_link TEXT,
-    storage_path TEXT,
-    created_at TEXT,
-    is_hidden INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS document_visibility(
-    document_id INTEGER,
-    user_id INTEGER,
-    PRIMARY KEY (document_id, user_id)
-)
-""")
-
-conn.commit()
-
-# =========================================================
-# MIGRATIONS
-# =========================================================
-
-for column, table, definition in [
-    ("storage_path", "documents", "TEXT"),
-    ("is_hidden", "documents", "INTEGER DEFAULT 0"),
-    ("is_blocked", "users", "INTEGER DEFAULT 0"),
-]:
-    try:
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-        conn.commit()
-    except Exception:
-        pass
-
-
-# =========================================================
-# SEED DEFAULTS
-# =========================================================
-
-# Seed default categories
-for cat in DEFAULT_CATEGORIES:
-    try:
-        cur.execute("INSERT INTO categories(name) VALUES(?)", (cat,))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        pass
-
-# Seed admin user
-cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
-existing = cur.fetchone()
-
-if not existing:
-    cur.execute(
-        "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
-        (
-            "admin",
-            DEFAULT_ADMIN_EMAIL,
-            hash_password(DEFAULT_ADMIN_PASSWORD),
-            "admin"
-        )
-    )
-    conn.commit()
-
-
-# =========================================================
-# LOGIN
+# LOGIN PAGE
 # =========================================================
 
 def login_page():
@@ -314,14 +316,17 @@ def login_page():
 
 
 # =========================================================
-# SHOW LOGIN PAGE
+# SHOW LOGIN PAGE IF NOT LOGGED IN
 # =========================================================
 
 if not st.session_state.user:
-
     login_page()
     st.stop()
 
+
+# =========================================================
+# SIDEBAR NAVIGATION
+# =========================================================
 
 with st.sidebar:
 
@@ -597,18 +602,36 @@ elif menu == "Categories":
         submit = st.form_submit_button("Add")
 
     if submit:
-        try:
-            cur.execute("INSERT INTO categories(name) VALUES(?)", (new_category,))
-            conn.commit()
-            st.success("Added")
-            st.rerun()
-        except sqlite3.IntegrityError:
-            st.error("Category already exists")
+        if new_category.strip():
+            try:
+                cur.execute("INSERT INTO categories(name) VALUES(?)", (new_category.strip(),))
+                conn.commit()
+                st.success("Added")
+                st.rerun()
+            except sqlite3.IntegrityError:
+                st.error("Category already exists")
+        else:
+            st.error("Category name cannot be empty")
 
     st.subheader("Existing Categories")
     cur.execute("SELECT id, name FROM categories")
-    for cat in cur.fetchall():
-        st.write(f"📁 {cat[1]}")
+    categories = cur.fetchall()
+    
+    if categories:
+        for cat in categories:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"📁 {cat[1]}")
+            with col2:
+                if st.button("🗑️", key=f"del_cat_{cat[0]}", help="Delete category"):
+                    try:
+                        cur.execute("DELETE FROM categories WHERE id=?", (cat[0],))
+                        conn.commit()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Cannot delete: {e}")
+    else:
+        st.info("No categories found")
 
 
 # =========================================================
@@ -745,6 +768,8 @@ elif menu == "Admin Tools":
                     st.error("Password cannot be empty")
                 elif new_password != confirm_password:
                     st.error("Passwords do not match")
+                elif len(new_password) < 6:
+                    st.error("Password must be at least 6 characters")
                 else:
                     uid = user_options[selected_user]
                     cur.execute(
@@ -757,8 +782,8 @@ elif menu == "Admin Tools":
     # ── Manage Visibility ─────────────────────────────
     with tab3:
 
-        st.subheader("Hide Files from Specific Users")
-        st.caption("Hidden files are hidden from ALL viewers. Use this to restrict specific files to specific users.")
+        st.subheader("Manage Document Visibility")
+        st.caption("Restrict specific documents to specific users")
 
         cur.execute("""
             SELECT id, title, category, is_hidden
@@ -775,7 +800,7 @@ elif menu == "Admin Tools":
         if not all_docs:
             st.info("No documents found.")
         elif not viewers:
-            st.info("No viewers found.")
+            st.info("No active viewers found.")
         else:
             doc_options = {f"{d[2]} — {d[1]}": d[0] for d in all_docs}
             viewer_options = {f"{v[1]} ({v[2]})": v[0] for v in viewers}
@@ -793,7 +818,8 @@ elif menu == "Admin Tools":
             restricted_users = cur.fetchall()
 
             if restricted_users:
-                st.warning(f"This file is restricted to: {', '.join([r[0] for r in restricted_users])}")
+                st.warning(f"This file is hidden from: {', '.join([r[0] for r in restricted_users])}")
+                st.info("These users cannot see this file. All other viewers can see it.")
             else:
                 st.success("This file is visible to all viewers")
 
@@ -802,9 +828,9 @@ elif menu == "Admin Tools":
             c1, c2 = st.columns(2)
 
             with c1:
-                st.write("**Restrict to specific user:**")
+                st.write("**Hide from specific user:**")
                 selected_viewer = st.selectbox("Select Viewer", list(viewer_options.keys()))
-                if st.button("🔒 Restrict", use_container_width=True):
+                if st.button("🔒 Hide from User", use_container_width=True):
                     vid = viewer_options[selected_viewer]
                     try:
                         cur.execute(
@@ -812,17 +838,17 @@ elif menu == "Admin Tools":
                             (doc_id, vid)
                         )
                         conn.commit()
-                        st.success("Restricted!")
+                        st.success("Document hidden from this user!")
                         st.rerun()
                     except Exception:
-                        st.error("Already restricted for this user")
+                        st.error("Already hidden from this user")
 
             with c2:
                 st.write("**Remove restriction:**")
                 if restricted_users:
                     remove_options = {r[0]: r for r in restricted_users}
-                    selected_remove = st.selectbox("Select User to Unrestrict", list(remove_options.keys()))
-                    if st.button("🔓 Unrestrict", use_container_width=True):
+                    selected_remove = st.selectbox("Select User to Unhide", list(remove_options.keys()))
+                    if st.button("🔓 Show to User", use_container_width=True):
                         cur.execute("""
                             DELETE FROM document_visibility
                             WHERE document_id=? AND user_id=(
@@ -834,11 +860,3 @@ elif menu == "Admin Tools":
                         st.rerun()
                 else:
                     st.info("No restrictions to remove")
-
-
-# =========================================================
-# CLOSE DATABASE CONNECTION
-# =========================================================
-
-# Note: SQLite connection will be closed when the script ends
-# For a production app, consider using context managers
