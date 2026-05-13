@@ -1,26 +1,27 @@
 # Document Storage
 
-A Streamlit document management system with user accounts, admin controls, Google Drive file storage, and Google Sheets data storage. Admins can upload, categorize, delete, and manage documents, while viewers can search, open, and download shared files.
+A Streamlit document management system with user accounts, admin controls, and Supabase file storage. Admins can upload, rename, categorize, delete documents, block users, and reset passwords, while viewers can search, open, and download shared files.
 
-## Features
+## Features 
 
 - User login and self-service account creation
 - Admin and viewer roles
-- Google Drive document uploads
-- Google Sheets storage for users, categories, and document records
+- Supabase file storage with public download links
+- SQLite database for users, categories, and document records
 - Category management
-- Document search and category filtering
+- Document search
+- Rename documents (admin only)
 - Viewer download buttons
 - Admin-only document and category deletion
+- Managed Visibility
+- Reset Passwords
+- Storage Stats
 
 ## Requirements
 
 - Python 3.10+
-- Google Cloud project with these APIs enabled:
-  - Google Drive API
-  - Google Sheets API
-- OAuth client ID and client secret
-- A Google Sheet ID for shared app data
+- Supabase account (free tier works)
+- Supabase project with a public storage bucket named `documents`
 
 ## Local Setup
 
@@ -33,10 +34,9 @@ pip install -r requirements.txt
 Create `.streamlit/secrets.toml`:
 
 ```toml
-[google]
-client_id = "your-google-client-id"
-client_secret = "your-google-client-secret"
-sheet_id = "your-google-sheet-id"
+[supabase]
+url = "https://your-project.supabase.co"
+key = "your-anon-public-key"
 ```
 
 Run the app:
@@ -45,70 +45,35 @@ Run the app:
 streamlit run app.py
 ```
 
-On first run, Google may ask you to authorize access.
+## Supabase Setup
+
+1. Go to [supabase.com](https://supabase.com) and create a free account
+2. Create a new project
+3. Go to **Storage** → **New bucket**
+4. Name it `documents` and enable **Public bucket**
+5. Go to **Settings** → **API**
+6. Copy the **Project URL** and **anon/public key**
+7. Paste them into your secrets as shown above
 
 ## Streamlit Cloud Deployment
 
-For Streamlit Cloud, use a Google service account because desktop OAuth cannot open a local browser on the cloud server.
-
-Create a Google Cloud service account, download its JSON key, and paste the full JSON into Streamlit secrets as a multi-line string:
+Add the following to your app secrets in Streamlit Cloud (**Manage app → Settings → Secrets**):
 
 ```toml
-GOOGLE_SERVICE_ACCOUNT_JSON = '''
-{
-  "type": "service_account",
-  "project_id": "...",
-  "private_key_id": "...",
-  "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-  "client_email": "...",
-  "client_id": "...",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "...",
-  "universe_domain": "googleapis.com"
-}
-'''
-
-[google]
-sheet_id = "your-google-sheet-id"
+[supabase]
+url = "https://your-project.supabase.co"
+key = "your-anon-public-key"
 ```
-
-You can also paste the key fields individually:
-
-```toml
-[gcp_service_account]
-type = "service_account"
-project_id = "your-project-id"
-private_key_id = "your-private-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-client_email = "your-service-account@your-project.iam.gserviceaccount.com"
-client_id = "your-service-account-client-id"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "your-cert-url"
-universe_domain = "googleapis.com"
-
-[google]
-sheet_id = "your-google-sheet-id"
-```
-
-Share your Google Sheet with the service account `client_email` as **Editor**.
 
 Deploy from:
-
 - Repository: `Abubacarr/Document-Storage`
 - Branch: `main`
 - Main file: `app.py`
 
-## Private Files
+## Default Admin Account
 
-Do not commit these files:
+```
+Email:    admin@gmail.com
+Password: Admin@2026
+```
 
-- `.streamlit/secrets.toml`
-- `credentials.json`
-- `token.json`
-- `google_sheet_id.txt`
-- `documents.db`
-- `uploads/`
