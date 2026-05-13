@@ -72,7 +72,25 @@ def get_supabase() -> Client:
     key = st.secrets["supabase"]["key"]
     return create_client(url, key)
 
+def signup_user(email, password):
+    supabase = get_supabase()
+    return supabase.auth.sign_up({
+        "email": email,
+        "password": password
+    })
 
+
+def login_user(email, password):
+    supabase = get_supabase()
+    return supabase.auth.sign_in_with_password({
+        "email": email,
+        "password": password
+    })
+
+
+def logout_user():
+    supabase = get_supabase()
+    supabase.auth.sign_out()
 # =========================================================
 # DATABASE CONNECTION (Thread-safe)
 # =========================================================
@@ -231,64 +249,43 @@ def delete_from_supabase(storage_path: str):
 # =========================================================
 
 def login_page():
-    conn = get_db_connection()
-    cur = conn.cursor()
-
     st.title("🔐 Login")
 
     tab1, tab2 = st.tabs(["Login", "Create Account"])
 
-    # =====================================================
-    # LOGIN TAB
-    # =====================================================
-
+    # ---------------- LOGIN ----------------
     with tab1:
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
 
-        with st.form("login_form"):
+        if st.button("Login"):
+            try:
+                res = login_user(email, password)
 
-            email = st.text_input("Email")
+                session = res.session
+                user = res.user
 
-            password = st.text_input(
-                "Password",
-                type="password"
-            )
-
-            submit = st.form_submit_button(
-                "Login",
-                use_container_width=True
-            )
-
-        if submit:
-
-            cur.execute(
-                """
-                SELECT id, username, role, is_blocked
-                FROM users
-                WHERE email=? AND password=?
-                """,
-                (email, hash_password(password))
-            )
-
-            user = cur.fetchone()
-
-            if not user:
-
-                st.error("Invalid email or password")
-
-            elif user[3] == 1:
-
-                st.error("Your account has been blocked. Contact admin.")
-
-            else:
-
-                st.session_state.user_id = user[0]
-                st.session_state.user = user[1]
-                st.session_state.role = user[2]
+                st.session_state.user = user.email
+                st.session_state.user_id = user.id
+                st.session_state.role = "viewer"  # default role
 
                 st.success("Logged in successfully")
-                conn.close()
                 st.rerun()
 
+            except Exception as e:
+                st.error(f"Login failed: {e}")
+
+    # ---------------- SIGNUP ----------------
+    with tab2:
+        email = st.text_input("New Email")
+        password = st.text_input("New Password", type="password")
+
+        if st.button("Create Account"):
+            try:
+                signup_user(email, password)
+                st.success("Account created! Check your email if confirmation is enabled.")
+            except Exception as e:
+                st.error(f"Signup failed: {e}")
     # =====================================================
     # CREATE ACCOUNT TAB
     # =====================================================
@@ -335,9 +332,15 @@ def login_page():
 # SHOW LOGIN PAGE IF NOT LOGGED IN
 # =========================================================
 
-if not st.session_state.user:
+supabase = get_supabase()
+session = supabase.auth.get_session()
+
+if not session or not session.user:
     login_page()
     st.stop()
+
+st.session_state.user = session.user.email
+st.session_state.user_id = session.user.id
 
 
 # =========================================================
