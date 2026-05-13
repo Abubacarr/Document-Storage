@@ -52,9 +52,21 @@ st.set_page_config(
 
 def get_secret(key, default=""):
     try:
-        return st.secrets.get(key, default)
+        value = st.secrets.get(key)
+        if value:
+            return value
     except Exception:
-        return default
+        pass
+
+    for section in ("supabase", "admin"):
+        try:
+            value = st.secrets.get(section, {}).get(key)
+            if value:
+                return value
+        except Exception:
+            pass
+
+    return default
 
 
 def get_secret_section(section):
@@ -64,8 +76,8 @@ def get_secret_section(section):
         return {}
 
 
-DEFAULT_ADMIN_EMAIL = get_secret("EMAIL_ADDRESS")
-DEFAULT_ADMIN_PASSWORD = get_secret("EMAIL_PASSWORD")
+DEFAULT_ADMIN_EMAIL = get_secret("EMAIL_ADDRESS") or get_secret("DEFAULT_ADMIN_EMAIL")
+DEFAULT_ADMIN_PASSWORD = get_secret("EMAIL_PASSWORD") or get_secret("DEFAULT_ADMIN_PASSWORD")
 
 
 # =========================================================
@@ -245,10 +257,8 @@ def init_database():
     conn.close()
 
 
-# Initialize database on first run
-if "db_initialized" not in st.session_state:
-    init_database()
-    st.session_state.db_initialized = True
+# Initialize database and keep the secret-based admin account synced.
+init_database()
 
 
 # =========================================================
