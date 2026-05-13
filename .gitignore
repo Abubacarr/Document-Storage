@@ -1,9 +1,11 @@
-.streamlit/st.secrets.toml
+.streamlit/*.toml
 .idea/
 .venv/
 token.json
 credentials.json
 documents.db
+backups/
+*.backup_*.py
 uploads/
 __pycache__/
 *.pyc

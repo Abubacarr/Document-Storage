@@ -6,6 +6,7 @@
 # =========================================================
 
 import hashlib
+import shutil
 import sqlite3
 import tempfile
 from datetime import datetime
@@ -20,7 +21,9 @@ from supabase import create_client, Client
 
 BASE_DIR = Path(__file__).resolve().parent
 SQLITE_DB_PATH = BASE_DIR / "documents.db"
+BACKUP_DIR = BASE_DIR / "backups"
 UPLOAD_DIR = BASE_DIR / "uploads"
+BACKUP_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 DEFAULT_ADMIN_EMAIL = st.secrets.get("EMAIL_ADDRESS", "")
@@ -84,8 +87,34 @@ def get_db_connection():
     return conn
 
 
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def backup_database(reason="manual"):
+    if not SQLITE_DB_PATH.exists():
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    today = datetime.now().strftime("%Y%m%d")
+    existing_backup = next(BACKUP_DIR.glob(f"documents_{reason}_{today}_*.db"), None)
+    if existing_backup:
+        return existing_backup
+
+    backup_path = BACKUP_DIR / f"documents_{reason}_{timestamp}.db"
+    shutil.copy2(SQLITE_DB_PATH, backup_path)
+    return backup_path
+
+
+def column_exists(cur, table, column):
+    cur.execute(f"PRAGMA table_info({table})")
+    return column in [row[1] for row in cur.fetchall()]
+
+
 def init_database():
     """Initialize database tables and seed data"""
+    backup_database("startup")
+
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -129,15 +158,13 @@ def init_database():
     """)
     
     # Run migrations
-    for column, table, definition in [
-        ("storage_path", "documents", "TEXT"),
-        ("is_hidden", "documents", "INTEGER DEFAULT 0"),
-        ("is_blocked", "users", "INTEGER DEFAULT 0"),
+    for table, column, definition in [
+        ("documents", "storage_path", "TEXT"),
+        ("documents", "is_hidden", "INTEGER DEFAULT 0"),
+        ("users", "is_blocked", "INTEGER DEFAULT 0"),
     ]:
-        try:
+        if not column_exists(cur, table, column):
             cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-        except Exception:
-            pass
     
     conn.commit()
     
@@ -150,22 +177,33 @@ def init_database():
     
     conn.commit()
     
-    # Seed admin user if not exists
+    # Keep the emergency admin account aligned with Streamlit secrets.
     if DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD:
         cur.execute("SELECT id FROM users WHERE email=?", (DEFAULT_ADMIN_EMAIL,))
         existing = cur.fetchone()
+        password_hash = hash_password(DEFAULT_ADMIN_PASSWORD)
         
-        if not existing:
+        if existing:
             cur.execute(
-                "INSERT INTO users(username,email,password,role) VALUES(?,?,?,?)",
+                """
+                UPDATE users
+                SET username=?, password=?, role=?, is_blocked=0
+                WHERE email=?
+                """,
+                ("admin", password_hash, "admin", DEFAULT_ADMIN_EMAIL)
+            )
+        else:
+            cur.execute(
+                "INSERT INTO users(username,email,password,role,is_blocked) VALUES(?,?,?,?,?)",
                 (
                     "admin",
                     DEFAULT_ADMIN_EMAIL,
-                    hash_password(DEFAULT_ADMIN_PASSWORD),
-                    "admin"
+                    password_hash,
+                    "admin",
+                    0
                 )
             )
-            conn.commit()
+        conn.commit()
     
     conn.close()
 
@@ -179,10 +217,6 @@ if "db_initialized" not in st.session_state:
 # =========================================================
 # HELPER FUNCTIONS
 # =========================================================
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
 
 def is_admin():
     return st.session_state.get("role") == "admin"
@@ -788,10 +822,7 @@ elif menu == "Admin Tools":
 
         st.subheader("Reset User Password")
 
-        cur.execute(
-            "SELECT id, username, email FROM users WHERE email != ? ORDER BY username",
-            (DEFAULT_ADMIN_EMAIL,)
-        )
+        cur.execute("SELECT id, username, email FROM users ORDER BY username")
         all_users = cur.fetchall()
 
         if not all_users:
@@ -820,6 +851,8 @@ elif menu == "Admin Tools":
                     )
                     conn.commit()
                     st.success(f"Password reset for {selected_user}")
+
+        st.caption("The default admin account is synced from Streamlit secrets on startup. Update EMAIL_ADDRESS and EMAIL_PASSWORD in secrets to recover admin access.")
 
     # ── Manage Visibility ─────────────────────────────
     with tab3:
