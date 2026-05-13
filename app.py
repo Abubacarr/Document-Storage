@@ -26,9 +26,6 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 BACKUP_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-DEFAULT_ADMIN_EMAIL = st.secrets.get("EMAIL_ADDRESS", "")
-DEFAULT_ADMIN_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "")
-
 DEFAULT_CATEGORIES = [
     "Guidelines",
     "Policies",
@@ -47,6 +44,28 @@ st.set_page_config(
     page_icon="📂",
     layout="wide",
 )
+
+
+# =========================================================
+# SECRETS
+# =========================================================
+
+def get_secret(key, default=""):
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
+def get_secret_section(section):
+    try:
+        return st.secrets.get(section, {})
+    except Exception:
+        return {}
+
+
+DEFAULT_ADMIN_EMAIL = get_secret("EMAIL_ADDRESS")
+DEFAULT_ADMIN_PASSWORD = get_secret("EMAIL_PASSWORD")
 
 
 # =========================================================
@@ -71,8 +90,26 @@ if "upload_key" not in st.session_state:
 
 @st.cache_resource
 def get_supabase() -> Client:
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
+    supabase_config = get_secret_section("supabase")
+    url = supabase_config.get("url")
+    key = supabase_config.get("key")
+
+    if not url or not key:
+        st.error("Supabase secrets are missing.")
+        st.write("Create `.streamlit/secrets.toml` with:")
+        st.code(
+            """
+[supabase]
+url = "https://your-project.supabase.co"
+key = "your-anon-public-key"
+
+EMAIL_ADDRESS = "your-admin-email"
+EMAIL_PASSWORD = "your-admin-password"
+            """.strip(),
+            language="toml",
+        )
+        st.stop()
+
     return create_client(url, key)
 
 
